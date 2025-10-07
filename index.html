@@ -35,7 +35,6 @@
   .sparkle{position:absolute;font-size:1.5rem;pointer-events:none;animation:sparkleAnimation 1s ease-out forwards}
   @keyframes sparkleAnimation{0%{opacity:0;transform:scale(0)}50%{opacity:1;transform:scale(1.2) rotate(180deg)}100%{opacity:0;transform:scale(.8) rotate(360deg)}}
 
-  /* overlay grande para pedir el click */
   #bigPlayOverlay{
     position:fixed; left:0; top:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center;
     background: rgba(0,0,0,0.45); z-index:2000; transition:opacity .25s;
@@ -83,7 +82,6 @@
     <div class="speech-bubble" id="speechBubble" style="position:absolute;bottom:100px;right:-20px;background:white;padding:12px 16px;border-radius:16px;box-shadow:0 5px 15px rgba(0,0,0,.12);color:#d63384;font-weight:500;opacity:0;transform:translateY(10px);transition:all .3s">¡Hola mi amor! 💕</div>
   </div>
 
-  <!-- overlay grande para pedir el click; user must click here to allow audio -->
   <div id="bigPlayOverlay" role="dialog" aria-modal="true">
     <button id="bigPlayBtn" aria-label="Tocar música">
       ▶️  Reproducir "Photograph"
@@ -91,15 +89,11 @@
     </button>
   </div>
 
-  <!-- fallback audio local (ruta relativa a esta index.html) -->
   <audio id="bgAudio" autoplay loop>
     <source src="audio/photograph.mp3" type="audio/mpeg">
   </audio>
  
 <script>
-/* -------------------
-   Datos
-   ------------------- */
 const puzzleData = [
   { letter: 'T', number: 2, position: 0 },
   { letter: 'E', number: 7, position: 1 },
@@ -147,9 +141,6 @@ let isCompleted = false;
 
 const bgAudio = document.getElementById('bgAudio');
 
-/* -------------------
-   Puzzle logic
-   ------------------- */
 function initGame(){
   createPuzzleSlots();
   createPuzzlePieces();
@@ -159,7 +150,6 @@ function initGame(){
   document.getElementById('bigPlayBtn').addEventListener('click', async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log('bigPlayBtn clicked — intentando reproducir audio local...');
     await tryStartBackgroundMusicOnce(true);
   });
 
@@ -189,10 +179,50 @@ function createPuzzlePieces(){
     el.textContent=piece.number;
     el.addEventListener('dragstart',handleDragStart);
     el.addEventListener('dragend',handleDragEnd);
+    
+    // 👇 soporte para arrastrar con el dedo en celular
+    el.addEventListener('touchstart', handleTouchStart, {passive:false});
+    el.addEventListener('touchmove', handleTouchMove, {passive:false});
+    el.addEventListener('touchend', handleTouchEnd, {passive:false});
+    
     container.appendChild(el);
   });
   completedPieces=0; isCompleted=false;
   document.getElementById('completionMessage').classList.remove('show');
+}
+
+// funciones touch
+let touchPiece = null;
+function handleTouchStart(e){
+  e.preventDefault();
+  touchPiece = e.target;
+  touchPiece.classList.add('dragging');
+}
+function handleTouchMove(e){
+  if(!touchPiece) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  touchPiece.style.position = 'fixed';
+  touchPiece.style.left = (touch.clientX - 40) + 'px';
+  touchPiece.style.top = (touch.clientY - 40) + 'px';
+}
+function handleTouchEnd(e){
+  if(!touchPiece) return;
+  const slots = document.querySelectorAll('.puzzle-slot');
+  const rectPiece = touchPiece.getBoundingClientRect();
+  let dropped = false;
+  slots.forEach(slot=>{
+    const r = slot.getBoundingClientRect();
+    if(rectPiece.left < r.right && rectPiece.right > r.left && rectPiece.top < r.bottom && rectPiece.bottom > r.top){
+      handleDrop({target:slot, preventDefault:()=>{}});
+      dropped = true;
+    }
+  });
+  if(!dropped){
+    touchPiece.style.position='static';
+  }
+  touchPiece.classList.remove('dragging');
+  touchPiece = null;
 }
 
 function handleDragStart(e){ draggedPiece=e.target; e.target.classList.add('dragging'); tryStartBackgroundMusicOnce(); }
@@ -200,47 +230,19 @@ function handleDragEnd(e){ e.target.classList.remove('dragging'); draggedPiece=n
 function handleDragOver(e){ e.preventDefault(); }
 function handleDragEnter(e){ e.preventDefault(); if(e.target.classList) e.target.classList.add('highlight'); }
 function handleDragLeave(e){ if(e.target.classList) e.target.classList.remove('highlight'); }
-
 function handleDrop(e){
   e.preventDefault();
   if(e.target.classList) e.target.classList.remove('highlight');
-  if(!draggedPiece) return;
+  const piece = draggedPiece || touchPiece;
+  if(!piece) return;
   const dropPos = parseInt(e.target.dataset.position);
-  const piecePos = parseInt(draggedPiece.dataset.position);
+  const piecePos = parseInt(piece.dataset.position);
   if(dropPos===piecePos){
-    showHeartFeedback(e.target,true);
-    e.target.appendChild(draggedPiece);
-    draggedPiece.style.position='static';
-    draggedPiece.draggable=false;
-    createSparkleEffect(e.target);
+    e.target.appendChild(piece);
+    piece.style.position='static';
+    piece.draggable=false;
     completedPieces++;
     if(completedPieces===9) setTimeout(()=>revealLetters(),500);
-  } else {
-    showHeartFeedback(e.target,false);
-  }
-}
-
-function showHeartFeedback(target,isCorrect){
-  const heart=document.createElement('div');
-  heart.className=`heart-feedback ${isCorrect? 'heart-correct':'heart-wrong'}`;
-  heart.innerHTML = isCorrect? '💖':'💔';
-  const rect = target.getBoundingClientRect();
-  heart.style.left = (rect.left + window.scrollX + rect.width/2 - 20) + 'px';
-  heart.style.top = (rect.top + window.scrollY + rect.height/2 - 20) + 'px';
-  heart.style.position='absolute';
-  document.body.appendChild(heart);
-  setTimeout(()=>heart.remove(),700);
-}
-
-function createSparkleEffect(target){
-  for(let i=0;i<3;i++){
-    setTimeout(()=>{
-      const s=document.createElement('div'); s.className='sparkle'; s.innerHTML='✨';
-      const r=target.getBoundingClientRect();
-      s.style.left=(r.left + window.scrollX + Math.random()*r.width)+'px';
-      s.style.top=(r.top + window.scrollY + Math.random()*r.height)+'px';
-      document.body.appendChild(s); setTimeout(()=>s.remove(),1000);
-    }, i*180);
   }
 }
 
@@ -250,34 +252,14 @@ function revealLetters(){
     setTimeout(()=>{
       const piece = slot.querySelector('.puzzle-piece');
       if(piece){
-        piece.classList.add('letter-reveal');
         const correctLetter = puzzleData.find(p=>p.position===index).letter;
-        setTimeout(()=> piece.textContent = correctLetter, 400);
+        piece.textContent = correctLetter;
       }
     }, index*300);
   });
   setTimeout(()=>{
     document.getElementById('completionMessage').classList.add('show');
-    createFloatingHearts();
-    isCompleted = true;
-    document.getElementById('loveMessage').textContent = "Te amo mucho Yhibel";
-    document.getElementById('languageName').textContent = "Para ti";
-    tryStartBackgroundMusicOnce(true);
   }, 9*300 + 500);
-}
-
-function createFloatingHearts(){
-  const container=document.getElementById('floatingHearts');
-  for(let i=0;i<20;i++){
-    setTimeout(()=>{
-      const heart=document.createElement('div'); heart.className='floating-heart'; heart.innerHTML='💕';
-      heart.style.left=Math.random()*100+'%';
-      heart.style.top=(60 + Math.random()*30) + '%';
-      heart.style.animationDelay = Math.random()*2 + 's';
-      container.appendChild(heart);
-      setTimeout(()=>heart.remove(),4000);
-    }, i*150);
-  }
 }
 
 function startCatMessages(){
@@ -300,52 +282,33 @@ function startLanguageRotation(){
   }, 3000);
 }
 
-/* -------------------
-   Reproducción local (solo audio local)
-   ------------------- */
 let musicAttempted = false;
-
 function hideOverlayIfPlaying(){
   try {
     if(bgAudio && !bgAudio.paused){
       document.getElementById('bigPlayOverlay').classList.add('hidden');
     }
-  } catch(e){ console.log('hideOverlayIfPlaying error', e); }
+  } catch(e){}
 }
-
 function showOverlay(){ document.getElementById('bigPlayOverlay').classList.remove('hidden'); }
 function hideOverlay(){ document.getElementById('bigPlayOverlay').classList.add('hidden'); }
 
 async function tryStartBackgroundMusicOnce(forced = false){
   if(musicAttempted && !forced) return;
   musicAttempted = true;
-  console.log('Intentando reproducir audio local, forced=', forced);
-
   if(!bgAudio) {
-    console.warn('No se encontró bgAudio');
     showOverlay();
     return;
   }
-
   bgAudio.currentTime = 0;
   bgAudio.volume = 0.7;
   try {
     const p = bgAudio.play();
-    if(p && typeof p.then === 'function'){
-      await p;
-    }
-    console.log('Audio local reproduciéndose');
+    if(p && typeof p.then === 'function'){ await p; }
     hideOverlay();
-  } catch(err){
-    console.error('Error reproduciendo audio local:', err);
-    // mantener overlay visible para que usuario haga click explícito
-    showOverlay();
-  }
+  } catch(err){ showOverlay(); }
 }
 
-/* -------------------
-   Inicializar
-   ------------------- */
 document.addEventListener('DOMContentLoaded', () => {
   initGame();
   showOverlay();
